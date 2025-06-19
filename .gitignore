@@ -37,6 +37,15 @@ output/
 # Environment variables
 .env
 
+# Image and PDF files
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.bmp
+*.tiff
+*.pdf
+
 # System Files
 .DS_Store
 Thumbs.db
