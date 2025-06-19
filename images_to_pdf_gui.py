@@ -35,6 +35,7 @@ class ImagesToPDFConverterApp:
         # Buttons
         ttk.Button(button_frame, text="Add Images", command=self.add_images).pack(side=tk.LEFT, padx=(0, 5))
         ttk.Button(button_frame, text="Remove Selected", command=self.remove_selected).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="Remove All", command=self.remove_all).pack(side=tk.LEFT, padx=5)
         ttk.Button(button_frame, text="Move Up", command=lambda: self.move_item(-1)).pack(side=tk.LEFT, padx=5)
         ttk.Button(button_frame, text="Move Down", command=lambda: self.move_item(1)).pack(side=tk.LEFT, padx=5)
         
@@ -116,6 +117,22 @@ class ImagesToPDFConverterApp:
         self.update_status(f"Removed {len(selected)} image(s)")
         self.preview_label.config(text="No image selected")
         self.current_preview_index = -1
+    
+    def remove_all(self):
+        """Remove all images from the list."""
+        if self.conversion_in_progress or not self.image_paths:
+            return
+            
+        if messagebox.askyesno(
+            "Remove All Images",
+            "Are you sure you want to remove all images?"
+        ):
+            self.listbox.delete(0, tk.END)
+            self.image_paths.clear()
+            self.update_output_filename()
+            self.update_status("Removed all images")
+            self.preview_label.config(text="No image selected")
+            self.current_preview_index = -1
     
     def move_item(self, direction):
         if self.conversion_in_progress or not self.listbox.curselection():
