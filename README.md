@@ -1,6 +1,24 @@
-# PDF to PNG Converter
+# File Converter
 
-A simple Python application to convert PDF files to PNG images with both command-line and graphical interfaces.
+A collection of Python utilities for converting between different file formats, featuring:
+- PDF to PNG/JPEG/TIFF conversion
+- Images to PDF conversion
+
+With both command-line and graphical interfaces.
+
+## Features
+
+### PDF to Image Conversion
+- Convert PDFs to PNG, JPEG, or TIFF format
+- Adjustable DPI for high-quality output
+- Preview the first page before conversion
+- Command-line and GUI interfaces
+
+### Images to PDF Conversion
+- Combine multiple images into a single PDF
+- Support for JPG, PNG, BMP, TIFF, and GIF formats
+- Reorder and preview images before conversion
+- Simple and intuitive graphical interface
 
 ## Prerequisites
 
@@ -69,6 +87,7 @@ The GUI provides a user-friendly interface to:
 
 ## Features
 
+### PDF to Image
 - **Command-line interface** for batch processing and automation
 - **Graphical interface** for easy point-and-click operation
 - **Preview** the first page of the PDF before conversion
@@ -76,11 +95,37 @@ The GUI provides a user-friendly interface to:
 - **Progress tracking** during conversion
 - **Cross-platform** - works on Windows, macOS, and Linux
 
-## Example
+### Images to PDF
+- **Multiple formats** - Combine JPG, PNG, BMP, TIFF, and GIF images
+- **Drag and drop** interface for easy file selection
+- **Preview** selected images before conversion
+- **Reordering** of images before creating the PDF
+- **Simple output** - Combine multiple images into a single PDF file
 
+## Examples
+
+### PDF to Image
 Convert `document.pdf` to PNG files with 300 DPI:
 ```bash
 python pdf_to_png.py document.pdf --dpi 300
 ```
 
 This will create PNG files named `document_page_001.png`, `document_page_002.png`, etc. in the same directory as the input file.
+
+### Images to PDF
+Launch the GUI application:
+```bash
+python images_to_pdf_gui.py
+```
+
+Or run it directly on Windows by double-clicking `run_images_to_pdf.bat`.
+
+1. Click "Add Images" to select one or more image files
+2. Use the interface to reorder or remove images
+3. Click on an image to preview it
+4. Choose an output PDF filename
+5. Click "Convert to PDF" to create the combined PDF
+
+## License
+
+This project is open source and available under the [MIT License](LICENSE).
