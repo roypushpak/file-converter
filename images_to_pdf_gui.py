@@ -21,6 +21,13 @@ class ImagesToPDFConverterApp:
         self.conversion_in_progress = False
         self.current_preview_index = -1
         
+        # Drag and drop variables
+        self.drag_start_index = None
+        self.drag_current_index = None
+        self.drag_y = 0
+        self.drag_item = None
+        self.drag_rect = None
+        
         self.setup_ui()
     
     def setup_ui(self):
@@ -39,26 +46,63 @@ class ImagesToPDFConverterApp:
         ttk.Button(button_frame, text="Move Up", command=lambda: self.move_item(-1)).pack(side=tk.LEFT, padx=5)
         ttk.Button(button_frame, text="Move Down", command=lambda: self.move_item(1)).pack(side=tk.LEFT, padx=5)
         
-        # Listbox for images
-        list_frame = ttk.LabelFrame(main_frame, text="Selected Images", padding="5")
-        list_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
+        # Create a paned window to allow resizing between list and preview
+        paned = ttk.PanedWindow(main_frame, orient=tk.HORIZONTAL)
+        paned.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
         
-        self.listbox = tk.Listbox(list_frame, selectmode=tk.EXTENDED)
-        scrollbar = ttk.Scrollbar(list_frame, orient=tk.VERTICAL, command=self.listbox.yview)
-        self.listbox.configure(yscrollcommand=scrollbar.set)
+        # Left frame for image list
+        list_frame = ttk.LabelFrame(paned, text="Selected Images (drag to reorder)", padding=5)
+        paned.add(list_frame, weight=40)  # 40% of the width
         
+        # Right frame for preview
+        preview_frame = ttk.LabelFrame(paned, text="Preview", padding=5)
+        paned.add(preview_frame, weight=60)  # 60% of the width
+        
+        # Create listbox with scrollbar for images
+        list_container = ttk.Frame(list_frame)
+        list_container.pack(fill=tk.BOTH, expand=True)
+        
+        scrollbar = ttk.Scrollbar(list_container)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        self.listbox = tk.Listbox(
+            list_container,
+            selectmode=tk.EXTENDED,
+            exportselection=False,
+            yscrollcommand=scrollbar.set
+        )
         self.listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.config(command=self.listbox.yview)
         
-        # Bind selection change
+        # Bind window resize event to update preview
+        self.root.bind('<Configure>', lambda e: self.on_window_configure())
+        
+        # Preview area
+        self.preview_canvas = tk.Canvas(preview_frame, bg='white', highlightthickness=0)
+        self.preview_canvas.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        
+        # Add a label for preview instructions
+        self.preview_label = ttk.Label(
+            self.preview_canvas,
+            text="No image selected",
+            background='white',
+            foreground='gray',
+            font=('Arial', 10, 'italic')
+        )
+        self.preview_label.place(relx=0.5, rely=0.5, anchor=tk.CENTER)
+        
+        # Bind events for drag and drop
         self.listbox.bind('<<ListboxSelect>>', self.on_select_change)
+        self.listbox.bind('<Button-1>', self.on_mouse_down)
+        self.listbox.bind('<B1-Motion>', self.on_mouse_move)
+        self.listbox.bind('<ButtonRelease-1>', self.on_mouse_up)
         
-        # Preview frame
-        self.preview_frame = ttk.LabelFrame(main_frame, text="Preview", padding="10")
-        self.preview_frame.pack(fill=tk.BOTH, expand=True)
+        # Initialize drag state
+        self.drag_start_y = 0
+        self.drag_start_index = -1
+        self.drag_item = None
         
-        self.preview_label = ttk.Label(self.preview_frame, text="No image selected", anchor=tk.CENTER)
-        self.preview_label.pack(fill=tk.BOTH, expand=True)
+        # Preview update method remains the same but will work with the new preview_canvas
         
         # Output file selection
         output_frame = ttk.Frame(main_frame)
@@ -170,42 +214,263 @@ class ImagesToPDFConverterApp:
             self.current_preview_index = new_index
             self.show_preview()
     
-    def on_select_change(self, event):
-        if not self.listbox.curselection():
+    def on_mouse_down(self, event):
+        # Check if this is a left-click on an item
+        if event.num == 1:  # Left mouse button
+            index = self.listbox.nearest(event.y)
+            if index >= 0:
+                # Only start drag if we're not already dragging and it's a valid index
+                if not hasattr(self, 'drag_start_index') or self.drag_start_index == -1:
+                    self.drag_start_y = event.y
+                    self.drag_start_index = index
+                    self.drag_item = self.listbox.get(index)
+                    
+                    # Select the clicked item
+                    self.listbox.selection_clear(0, tk.END)
+                    self.listbox.selection_set(index)
+                    self.listbox.activate(index)
+                    
+                    # Update preview immediately on click
+                    self.current_preview_index = index
+                    self.show_preview()
+    
+    def on_mouse_move(self, event):
+        # Only process if we're in a drag operation
+        if not hasattr(self, 'drag_start_index') or self.drag_start_index == -1:
             return
             
-        index = self.listbox.curselection()[0]
-        if 0 <= index < len(self.image_paths) and index != self.current_preview_index:
-            self.current_preview_index = index
-            self.show_preview()
+        # Calculate movement
+        delta = event.y - self.drag_start_y
+        if abs(delta) > 5:  # Only start dragging after a small movement
+            # Get the current index under the mouse
+            current_index = self.listbox.nearest(event.y)
+            
+            # Only process if we have a valid index that's different from start
+            if 0 <= current_index < self.listbox.size() and current_index != self.drag_start_index:
+                # Move the item in the list
+                self.image_paths.insert(current_index, self.image_paths.pop(self.drag_start_index))
+                
+                # Update the listbox
+                items = list(self.listbox.get(0, tk.END))
+                item_text = items.pop(self.drag_start_index)
+                items.insert(current_index, item_text)
+                
+                # Update the listbox
+                self.listbox.delete(0, tk.END)
+                for item in items:
+                    self.listbox.insert(tk.END, item)
+                
+                # Update the drag start index
+                self.drag_start_index = current_index
+                
+                # Update selection and ensure visibility
+                self.listbox.selection_clear(0, tk.END)
+                self.listbox.selection_set(current_index)
+                self.listbox.see(current_index)
+                
+                # Update preview to follow the dragged item
+                if self.current_preview_index >= 0:
+                    if self.current_preview_index == self.drag_start_index:
+                        self.current_preview_index = current_index
+                    elif (self.drag_start_index < self.current_preview_index <= current_index or
+                          current_index <= self.current_preview_index < self.drag_start_index):
+                        self.current_preview_index += (1 if self.drag_start_index < current_index else -1)
+                    
+                    # Update the preview
+                    self.show_preview()
     
-    def show_preview(self):
-        if self.current_preview_index < 0 or self.current_preview_index >= len(self.image_paths):
-            self.preview_label.config(text="No image selected")
+    def on_mouse_up(self, event):
+        # Reset drag state on mouse up
+        if hasattr(self, 'drag_start_index') and self.drag_start_index != -1:
+            self.drag_start_index = -1
+            self.drag_item = None
+            
+            # Force a selection change to update the preview if needed
+            if self.listbox.curselection():
+                index = self.listbox.curselection()[0]
+                if 0 <= index < len(self.image_paths):
+                    self.current_preview_index = index
+                    self.show_preview()
+    
+    def on_window_configure(self, event=None):
+        # Update preview when window is resized
+        if hasattr(self, 'current_preview_index') and 0 <= self.current_preview_index < len(self.image_paths):
+            self.root.after(100, self.show_preview)  # Small delay to allow window to finish resizing
+    
+    def on_select_change(self, event=None):
+        print("\n--- on_select_change ---")  # Debug
+        
+        # Skip if we're in the middle of a drag operation
+        if hasattr(self, 'drag_start_index') and self.drag_start_index != -1:
+            print("Drag in progress, skipping preview update")
             return
             
         try:
-            image_path = self.image_paths[self.current_preview_index]
-            img = Image.open(image_path)
+            if not self.listbox.curselection():
+                print("No selection")
+                self.current_preview_index = -1
+                self.show_preview()
+                return
+                
+            selected_indices = self.listbox.curselection()
+            print(f"Selected indices: {selected_indices}")
             
-            # Resize image to fit in preview
-            width, height = img.size
-            max_size = 400
-            if width > max_size or height > max_size:
-                ratio = min(max_size/width, max_size/height)
-                new_size = (int(width * ratio), int(height * ratio))
-                img = img.resize(new_size, Image.LANCZOS)
-            
-            # Convert to PhotoImage for Tkinter
-            photo = ImageTk.PhotoImage(img)
-            self.preview_label.config(image=photo)
-            self.preview_label.image = photo  # Keep a reference!
-            
-            # Update status
-            self.update_status(f"Preview: {os.path.basename(image_path)} ({width}x{height})")
-            
+            if selected_indices:  # If there's any selection
+                new_index = selected_indices[0]  # Take the first selected index
+                print(f"New index: {new_index}, Current preview index: {self.current_preview_index}")
+                
+                if 0 <= new_index < len(self.image_paths):
+                    self.current_preview_index = new_index
+                    print(f"Requesting preview for index {new_index}")
+                    self.show_preview()
+                    
+                    # Ensure the listbox maintains the selection
+                    self.root.after(50, lambda: self._maintain_selection(new_index))
+                else:
+                    print(f"Index {new_index} out of range (0-{len(self.image_paths)-1})")
         except Exception as e:
-            self.preview_label.config(text=f"Error loading preview: {str(e)}")
+            print(f"Error in on_select_change: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    def _maintain_selection(self, index):
+        """Helper to maintain selection after operations"""
+        if 0 <= index < self.listbox.size():
+            self.listbox.selection_clear(0, tk.END)
+            self.listbox.selection_set(index)
+            self.listbox.activate(index)
+    
+    def show_preview(self):
+        print("\n--- Starting show_preview ---")  # Debug
+        print(f"Current preview index: {self.current_preview_index}")
+        print(f"Number of images: {len(self.image_paths)}")
+        
+        # Clear previous preview if any
+        if hasattr(self, 'preview_canvas'):
+            self.preview_canvas.delete("all")
+            self.preview_label.place_forget()
+        
+        # Check if we have a valid selection
+        if not (0 <= self.current_preview_index < len(self.image_paths)):
+            print("No valid image selected")
+            if hasattr(self, 'preview_label'):
+                self.preview_label.place(relx=0.5, rely=0.5, anchor=tk.CENTER)
+            return
+        
+        try:
+            image_path = self.image_paths[self.current_preview_index]
+            print(f"Loading image: {image_path}")
+            
+            if not os.path.exists(image_path):
+                raise FileNotFoundError(f"Image file not found: {image_path}")
+            
+            # Open and convert the image with better quality settings
+            with Image.open(image_path) as img:
+                print(f"Original image size: {img.size}")
+                
+                # Convert to RGB if needed (for PNG with transparency)
+                if img.mode in ('RGBA', 'LA') or (img.mode == 'P' and 'transparency' in img.info):
+                    background = Image.new('RGB', img.size, (255, 255, 255))
+                    background.paste(img, mask=img.split()[-1])
+                    img = background
+                elif img.mode != 'RGB':
+                    img = img.convert('RGB')
+                
+                # Get canvas dimensions with a safety check
+                if not hasattr(self, 'preview_canvas'):
+                    print("Preview canvas not initialized yet")
+                    return
+                    
+                # Get available space with padding
+                padding = 40
+                canvas_width = max(10, self.preview_canvas.winfo_width() - padding * 2)
+                canvas_height = max(10, self.preview_canvas.winfo_height() - padding * 2)
+                
+                print(f"Available canvas size: {canvas_width}x{canvas_height}")
+                
+                # Calculate new size maintaining aspect ratio with high quality
+                width, height = img.size
+                if width == 0 or height == 0:
+                    raise ValueError("Invalid image dimensions (0x0)")
+                
+                # Calculate the maximum size that fits in the canvas while maintaining aspect ratio
+                # Use a higher quality scaling factor for the initial resize
+                scale_factor = min(canvas_width / width, canvas_height / height, 1.0)
+                
+                # For better quality, we'll do a two-pass resize for large downscaling
+                if scale_factor < 0.5:  # If scaling down significantly
+                    # First pass: resize to 2x target size for better quality
+                    temp_size = (int(width * scale_factor * 2), int(height * scale_factor * 2))
+                    if all(dim > 0 for dim in temp_size):
+                        img = img.resize(temp_size, Image.LANCZOS)
+                
+                # Final resize to target size
+                new_size = (max(1, int(width * scale_factor)), max(1, int(height * scale_factor)))
+                print(f"Resizing to: {new_size} (original: {width}x{height})")
+                
+                # Apply high-quality resizing
+                img = img.resize(new_size, Image.LANCZOS)
+                
+                # Apply a slight sharpening to enhance details
+                # img = img.filter(ImageFilter.UnsharpMask(radius=0.5, percent=50, threshold=3))
+                
+                # Convert to PhotoImage with better quality settings
+                photo = ImageTk.PhotoImage(
+                    image=img,
+                    master=self.preview_canvas
+                )
+                print("Image converted to PhotoImage")
+                
+                # Calculate position to center the image with padding
+                x = (self.preview_canvas.winfo_width() - new_size[0]) // 2
+                y = (self.preview_canvas.winfo_height() - new_size[1]) // 2
+                
+                # Ensure position is within canvas bounds
+                x = max(padding // 2, min(x, self.preview_canvas.winfo_width() - new_size[0] - padding // 2))
+                y = max(padding // 2, min(y, self.preview_canvas.winfo_height() - new_size[1] - padding // 2))
+                
+                print(f"Placing image at: ({x}, {y})")
+                
+                # Clear previous image and draw new one with a subtle shadow
+                self.preview_canvas.delete("all")
+                
+                # Add a subtle background for transparent images
+                bg_color = '#f0f0f0' if self.preview_canvas['bg'] == 'white' else '#404040'
+                self.preview_canvas.create_rectangle(
+                    x-1, y-1, 
+                    x + new_size[0] + 1, 
+                    y + new_size[1] + 1,
+                    fill=bg_color, outline=bg_color
+                )
+                
+                # Draw the image
+                img_id = self.preview_canvas.create_image(x, y, anchor=tk.NW, image=photo)
+                
+                # Keep a reference to the image to prevent garbage collection
+                self.preview_canvas.photo = photo
+                
+                # Draw a subtle border
+                self.preview_canvas.create_rectangle(
+                    x, y, 
+                    x + new_size[0] - 1, 
+                    y + new_size[1] - 1,
+                    outline='#cccccc', width=1
+                )
+                
+                # Update status with more info
+                file_size = os.path.getsize(image_path) / 1024  # Size in KB
+                status_text = f"Preview: {os.path.basename(image_path)} ({width}×{height}, {file_size:.1f} KB)"
+                print(status_text)
+                self.update_status(status_text)
+                
+        except Exception as e:
+            error_msg = f"Error loading preview: {str(e)}"
+            print(error_msg)
+            import traceback
+            traceback.print_exc()
+            if hasattr(self, 'preview_label'):
+                self.preview_label.config(text=error_msg)
+                self.preview_label.place(relx=0.5, rely=0.5, anchor=tk.CENTER)
     
     def browse_output(self):
         if self.conversion_in_progress:
